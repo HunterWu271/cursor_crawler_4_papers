@@ -1,5 +1,6 @@
 data/
 .venv/
-__psyache__/
+__pycache__/
 workspace.code-workspace 
 utilities.ipynb
+*.pyc
