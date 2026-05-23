@@ -3,7 +3,7 @@
 - 這是一個利用 Cursor 學習 Vibe Coding 的專題。
 - 以 **Playwright** 非同步載入新聞內頁、**BeautifulSoup** 解析 DOM，抓取聯合報、中國時報、自由時報、壹蘋新聞網的結構化新聞資料，輸出 UTF-8 CSV。內建付費牆偵測、正文清洗、去重與隨機延遲，適合研究或批次建料用途。
 
-詳細需求說明見 [`docs/PRD.md`](docs/PRD.md)。
+- 詳細需求說明見 [`docs/PRD.md`](docs/PRD.md)。
 
 ---
 
