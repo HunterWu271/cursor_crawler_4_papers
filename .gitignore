@@ -1,0 +1,5 @@
+data/
+.venv/
+__psyache__/
+workspace.code-workspace 
+utilities.ipynb
