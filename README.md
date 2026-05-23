@@ -20,7 +20,7 @@
 
 ## 功能摘要
 
-- **統一七類新聞種類**：要聞、社會、生活、產經/財經、全球/國際、運動、娛樂（見 `config/categories.py`）
+- **統一擷取七類新聞種類**：要聞、社會、生活、產經/財經、全球/國際、運動、娛樂（見 `config/categories.py`）
 - **自動探索**：從各報分類列表頁收集文章內頁 URL（`scrapers/discovery.py`）
 - **工廠分流**：依 URL 網域選擇解析器（`scrapers/factory.py`）
 - **動態正文**：`domcontentloaded` + 正文段落等待，共用瀏覽器工作階段以加速批次爬取
