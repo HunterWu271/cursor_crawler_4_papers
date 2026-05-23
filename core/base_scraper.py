@@ -111,6 +111,53 @@ class BaseScrape(ABC):
         return re.sub(r"\s+", "", text)
 
     @staticmethod
+    def clean_publish_time(text: str) -> str:
+        """
+        將刊出時間標準化為 ``YYYY-MM-DD-HH:MM``（日期與時間以連字號分隔）。
+        例：``2026-05-23 09:43`` → ``2026-05-23-09:43``
+        """
+        if not text:
+            return ""
+
+        raw = text.strip()
+
+        iso = re.search(
+            r"(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})",
+            raw,
+        )
+        if iso:
+            y, mo, d, h, mi = iso.groups()
+            return f"{y}-{mo}-{d}-{h}:{mi}"
+
+        slash = re.search(
+            r"(\d{4})[/年](\d{1,2})[/月](\d{1,2})日?\s*(\d{1,2}):(\d{2})",
+            raw,
+        )
+        if slash:
+            y, mo, d, h, mi = slash.groups()
+            return f"{y}-{mo.zfill(2)}-{d.zfill(2)}-{h.zfill(2)}:{mi}"
+
+        hyphen = re.search(
+            r"(\d{4})-(\d{2})-(\d{2})\s*(\d{2}):(\d{2})",
+            raw,
+        )
+        if hyphen:
+            y, mo, d, h, mi = hyphen.groups()
+            return f"{y}-{mo}-{d}-{h}:{mi}"
+
+        date_only = re.search(r"(\d{4})-(\d{2})-(\d{2})", raw)
+        if date_only:
+            y, mo, d = date_only.groups()
+            return f"{y}-{mo}-{d}"
+
+        collapsed = re.sub(r"\s+", "", raw)
+        stuck = re.search(r"^(\d{4}-\d{2}-\d{2})(\d{2}:\d{2})", collapsed)
+        if stuck:
+            return f"{stuck.group(1)}-{stuck.group(2)}"
+
+        return collapsed
+
+    @staticmethod
     def _normalize_author_name(name: str) -> str:
         """將擷取片段整理為純記者姓名。"""
         if not name:

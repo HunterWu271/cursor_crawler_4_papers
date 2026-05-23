@@ -45,7 +45,7 @@ class LtnScraper(BaseScraper):
         return {
             "category": self.clean_metadata(category),
             "title": self.clean_metadata(title),
-            "publish_time": self.clean_metadata(publish_time),
+            "publish_time": self.clean_publish_time(publish_time),
             "author": self.clean_metadata(author),
             "content": content,
         }
