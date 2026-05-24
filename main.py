@@ -23,7 +23,12 @@ from config.settings import (
     DELAY_MIN_SECONDS,
     NEWS_URLS,
 )
-from core.playwright_engine import fetch_html, playwright_session
+from core.playwright_engine import (
+    fetch_html,
+    run_async_in_playwright_loop,
+    run_playwright_compatible,
+    playwright_session,
+)
 from scrapers.discovery import collect_all_newspapers_urls
 from scrapers.factory import ScraperFactory
 
@@ -32,6 +37,19 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "main",
+    "main_crawl_all",
+    "run_main_crawl_all",
+    "run_crawl",
+    "scrape_one",
+    "scrape_category_articles",
+    "records_to_dataframe",
+    "save_csv",
+    "random_delay",
+    "format_elapsed_hms",
+]
 
 
 def format_elapsed_hms(seconds: float) -> str:
@@ -267,7 +285,18 @@ async def main_crawl_all(
 
     統一種類：要聞、社會、生活、產經/財經、全球/國際、運動、娛樂。
     請使用此入口批次爬取，勿傳入首頁 URL。
+
+    Windows Jupyter 若事件迴圈不支援 Playwright 子程序，會自動改在
+    獨立執行緒以 Proactor 迴圈執行；亦可改用 ``run_main_crawl_all()``。
     """
+    await run_playwright_compatible(
+        lambda: _main_crawl_all_impl(articles_per_category)
+    )
+
+
+async def _main_crawl_all_impl(
+    articles_per_category: int | None = None,
+) -> None:
     from scrapers.discovery import ARTICLES_PER_CATEGORY, CATEGORIES_PER_PAPER
 
     per_category = articles_per_category or ARTICLES_PER_CATEGORY
@@ -287,20 +316,24 @@ def run_main_crawl_all(articles_per_category: int | None = None) -> None:
     """
     同步入口：一般腳本可直接呼叫。
 
-    Jupyter / IPython 已有事件迴圈時，請改用
-    ``await main_crawl_all(articles_per_category=…)``。
+    Jupyter / IPython 已有事件迴圈時，也可呼叫此函式（免 ``await``）；
+    或使用 ``await main_crawl_all(...)``（會自動處理 Windows 子程序限制）。
     """
     try:
         asyncio.get_running_loop()
+        in_running_loop = True
     except RuntimeError:
-        asyncio.run(main_crawl_all(articles_per_category))
+        in_running_loop = False
+
+    runner = lambda: _main_crawl_all_impl(articles_per_category)
+
+    if in_running_loop:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(run_async_in_playwright_loop, runner)
+            future.result()
         return
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(
-            asyncio.run, main_crawl_all(articles_per_category)
-        )
-        future.result()
+    run_async_in_playwright_loop(runner)
 
 
 if __name__ == "__main__":

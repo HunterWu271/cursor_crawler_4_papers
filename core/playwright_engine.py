@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import random
+import sys
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import AsyncIterator
+from typing import AsyncIterator, Awaitable, Callable, TypeVar
 
 from bs4 import BeautifulSoup
 from playwright.async_api import Browser, BrowserContext, Page, Playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
 from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
 
 USER_AGENTS = [
     (
@@ -62,6 +67,40 @@ ARTICLE_READY_SCRIPT = """() => {
 _active_session: ContextVar[PlaywrightSession | None] = ContextVar(
     "_active_session", default=None
 )
+
+T = TypeVar("T")
+
+
+def playwright_subprocess_supported() -> bool:
+    """
+    Playwright 需建立子程序。Windows 上若事件迴圈為 SelectorEventLoop
+    （Jupyter / IPython 常見），會觸發 NotImplementedError。
+    """
+    if sys.platform != "win32":
+        return True
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return True
+    return isinstance(loop, asyncio.ProactorEventLoop)
+
+
+def run_async_in_playwright_loop(factory: Callable[[], Awaitable[T]]) -> T:
+    """在支援子程序的獨立事件迴圈中執行（供執行緒包裝使用）。"""
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    return asyncio.run(factory())
+
+
+async def run_playwright_compatible(factory: Callable[[], Awaitable[T]]) -> T:
+    """在目前迴圈可則直接 await；否則改至獨立執行緒與 Proactor 迴圈。"""
+    if playwright_subprocess_supported():
+        return await factory()
+    logger.info(
+        "事件迴圈不支援 Playwright 子程序（Windows Jupyter 常見），"
+        "改在獨立執行緒執行…",
+    )
+    return await asyncio.to_thread(run_async_in_playwright_loop, factory)
 
 
 async def _load_page_html(page: Page, url: str) -> str:
