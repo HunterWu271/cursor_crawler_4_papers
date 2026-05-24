@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import random
@@ -252,22 +253,54 @@ async def main(urls: list[str] | None = None) -> None:
     logger.info("完成：%d 筆寫入 %s", len(df), output_path)
 
 
-async def main_crawl_all() -> None:
+async def main_crawl_all(
+    articles_per_category: int | None = None,
+) -> None:
     """
-    探索四家報社分類列表頁，抓取各類文章內頁（7 類 × 每類最多 40 則，最多約 1120 則）。
+    探索四家報社分類列表頁，抓取各類文章內頁。
+
+    參數
+    ----
+    articles_per_category:
+        每個新聞種類最多抓取篇數。``None`` 時使用
+        ``scrapers.discovery.ARTICLES_PER_CATEGORY``（目前預設 40）。
+
     統一種類：要聞、社會、生活、產經/財經、全球/國際、運動、娛樂。
     請使用此入口批次爬取，勿傳入首頁 URL。
     """
     from scrapers.discovery import ARTICLES_PER_CATEGORY, CATEGORIES_PER_PAPER
 
+    per_category = articles_per_category or ARTICLES_PER_CATEGORY
     logger.info(
         "探索四家報社文章 URL（每家 %d 類 × 每類 %d 則）…",
         CATEGORIES_PER_PAPER,
-        ARTICLES_PER_CATEGORY,
+        per_category,
     )
-    target_urls = await collect_all_newspapers_urls()
+    target_urls = await collect_all_newspapers_urls(
+        articles_per_category=per_category,
+    )
     logger.info("探索完成，共 %d 則文章 URL", len(target_urls))
     await main(target_urls)
+
+
+def run_main_crawl_all(articles_per_category: int | None = None) -> None:
+    """
+    同步入口：一般腳本可直接呼叫。
+
+    Jupyter / IPython 已有事件迴圈時，請改用
+    ``await main_crawl_all(articles_per_category=…)``。
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(main_crawl_all(articles_per_category))
+        return
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            asyncio.run, main_crawl_all(articles_per_category)
+        )
+        future.result()
 
 
 if __name__ == "__main__":

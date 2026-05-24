@@ -46,8 +46,9 @@ cursor_crawler_4_papers/
 │   ├── chinatimes.py
 │   ├── ltn.py
 │   └── nextApple.py
-├── main.py                  # 總調度、CSV 輸出、main / main_crawl_all
-├── test_scraper.py          # 單報社測試（7 類 × 每類最多 40 則）
+├── main.py                  # 總調度：main / main_crawl_all / run_main_crawl_all
+├── test_scraper.py          # 單報社測試（7 類；篇數見 discovery 預設）
+├── utilities.ipynb          # Notebook 範例（讀 CSV、await 批次爬取）
 ├── requirements.txt
 ├── docs/PRD.md
 └── data/                    # CSV 輸出目錄（執行後產生）
@@ -68,7 +69,7 @@ flowchart LR
     G --> H[data/*.csv]
 ```
 
-1. **探索階段**：每家報社 7 個分類列表頁 → 擷取文章連結（預設每類最多 40 則）
+1. **探索階段**：每家報社 7 個分類列表頁 → 擷取文章連結（篇數見下方「每類抓取篇數」）
 2. **爬取階段**：共用 Chromium，逐則載入內頁 → 解析欄位
 3. **輸出階段**：過濾失敗與重複 → 寫入 CSV
 
@@ -99,22 +100,68 @@ playwright install chromium
 
 ## 使用方式
 
+### API 入口對照
+
+| 函式 | 類型 | 適用環境 | 說明 |
+|------|------|----------|------|
+| `main_crawl_all(articles_per_category=…)` | `async` | 腳本（`asyncio.run`）、**Jupyter（`await`）** | 四家 × 七類批次爬取 |
+| `run_main_crawl_all(articles_per_category=…)` | 同步 | 腳本、Jupyter（免 `await`） | 內部偵測事件迴圈；Notebook 中以執行緒包裝 |
+| `main(urls)` | `async` | 腳本、Jupyter（`await`） | 手動指定文章內頁 URL |
+| `test_scraper(paper)` | 同步 | 腳本、Jupyter | 單報社測試；Notebook 亦可 `await test_scraper_async(paper)` |
+
 ### 1. 批次爬取四家（建議）
 
-探索四家 × 七類 × 每類最多 **40** 則（探索階段最多約 **1120** 則 URL；實際成功筆數受付費牆、列表頁可抓連結數影響）。
+入口函式為 **`main_crawl_all(articles_per_category=None)`**（非同步）或 **`run_main_crawl_all(...)`**（同步包裝）。
+
+| 呼叫方式 | 每類篇數 |
+|----------|----------|
+| `python main.py` | `discovery.ARTICLES_PER_CATEGORY` 預設值（目前 **40**） |
+| `asyncio.run(main_crawl_all())` | 同上（**.py 腳本**） |
+| `main_crawl_all(articles_per_category=10)` | **10**（執行時指定，不必改原始碼） |
+| `run_main_crawl_all(articles_per_category=10)` | **10**（同步呼叫，腳本或 Notebook 皆可） |
+
+探索階段 URL 上限約為 **7 類 × 4 家 × 每類篇數**（例如每類 40 → 最多約 **1120** 則）。實際寫入 CSV 的筆數可能更少（付費牆略過、列表頁連結不足、去重）。
+
+**命令列（預設篇數）：**
 
 ```bash
 python main.py
 ```
 
-或在程式中：
+**Python 腳本（.py）：**
 
 ```python
 import asyncio
-from main import main_crawl_all
+from main import main_crawl_all, run_main_crawl_all
 
-asyncio.run(main_crawl_all())
+# 非同步
+asyncio.run(main_crawl_all(articles_per_category=10))
+
+# 或同步包裝（腳本內無事件迴圈時等同 asyncio.run）
+run_main_crawl_all(articles_per_category=10)
 ```
+
+**Jupyter / Notebook（`utilities.ipynb` 範例）：**
+
+Jupyter 已內建執行中的事件迴圈，**不可**使用 `asyncio.run(...)`，否則會出現：
+
+`RuntimeError: asyncio.run() cannot be called from a running event loop`
+
+請改用以下任一方式：
+
+```python
+from main import main_crawl_all, run_main_crawl_all
+
+# 方式一（建議）：直接 await
+await main_crawl_all()
+await main_crawl_all(articles_per_category=10)
+
+# 方式二：同步包裝（不需 await；Notebook 內以執行緒執行 asyncio.run）
+run_main_crawl_all()
+run_main_crawl_all(articles_per_category=10)
+```
+
+傳入 `articles_per_category` 時，列表頁掃描上限會自動調整（至少「篇數 + 10」），通常無須手動改 `ARTICLE_SCAN_LIMIT`。
 
 ### 2. 單報社測試
 
@@ -123,6 +170,8 @@ python test_scraper.py ltn
 ```
 
 支援：`udn`、`chinatimes`、`ltn`、`nextapple`。
+
+每類篇數目前讀取 `discovery.py` 的 `ARTICLES_PER_CATEGORY`（與未傳參的 `main_crawl_all()` 相同）。若要在測試時指定篇數，可改 `discovery.py` 預設值，或在 Notebook 中自行呼叫 `collect_article_urls_by_category("ltn", articles_per_category=10)` 後接 `scrape_category_articles`。
 
 在 Jupyter 若已有事件迴圈：
 
@@ -145,7 +194,12 @@ urls = [
     "https://udn.com/news/story/6656/9507808",
     "https://news.ltn.com.tw/news/politics/breakingnews/5445562",
 ]
+
+# .py 腳本
 asyncio.run(main(urls))
+
+# Jupyter
+await main(urls)
 ```
 
 未傳 `urls` 時，預設使用 `config/settings.py` 的 `NEWS_URLS`（四家各 1 則測試稿）。
@@ -170,33 +224,45 @@ asyncio.run(main(urls))
 
 ## 設定調整
 
+### 執行時調整（建議）
+
+批次爬取時，優先使用 `main_crawl_all(articles_per_category=N)`，無須修改 `discovery.py`。
+
+### 修改預設值（永久）
+
 | 檔案 | 常數 | 說明 |
 |------|------|------|
-| `scrapers/discovery.py` | `ARTICLES_PER_CATEGORY` | 每類最多抓取篇數（目前 **40**） |
-| `scrapers/discovery.py` | `ARTICLE_SCAN_LIMIT` | 列表頁掃描連結上限（需 ≥ 每類篇數） |
-| `scrapers/discovery.py` | `NEWSPAPER_CATEGORIES` | 各報分類列表頁 URL |
+| `scrapers/discovery.py` | `ARTICLES_PER_CATEGORY` | 每類**預設**篇數（`main_crawl_all()` 未傳參、`python main.py` 時使用，目前 **40**） |
+| `scrapers/discovery.py` | `ARTICLE_SCAN_LIMIT` | 列表頁掃描連結上限；未傳 `articles_per_category` 時使用。傳參時會自動取 `max(此值, 篇數 + 10)` |
+| `scrapers/discovery.py` | `NEWSPAPER_CATEGORIES` | 各報七類分類列表頁 URL |
 | `config/settings.py` | `DELAY_MIN/MAX_SECONDS` | 則與則、報社間隨機延遲（秒） |
 | `config/settings.py` | `NEWS_URLS` | `main()` 預設測試 URL |
 | `config/settings.py` | `DATA_DIR` | CSV 輸出目錄 |
 
 ---
 
-## 兩種入口差異
+## 兩種批次／測試入口
 
-| 函式 | 用途 | URL 來源 |
-|------|------|----------|
-| **`main_crawl_all()`** | 四家、七類、多篇批次爬取 | `discovery` 自動探索 |
-| **`main(urls)`** | 自訂或少量測試 | 手動傳入或 `NEWS_URLS` |
+| 函式 | 用途 | URL 來源 | 每類篇數 |
+|------|------|----------|----------|
+| **`main_crawl_all(…)`** / **`run_main_crawl_all(…)`** | 四家、七類、多篇批次爬取 | `discovery` 自動探索 | 參數指定，或 `ARTICLES_PER_CATEGORY` 預設 |
+| **`main(urls)`** | 自訂或少量測試 | 手動傳入或 `NEWS_URLS` | 依 URL 列表長度，與類別無關 |
 
-**常見錯誤**：對 `main()` 傳入 `https://udn.com` 等**首頁**，程式會當成一篇文章解析，多半被略過或失敗。批次請用 `main_crawl_all()`。
+`run_main_crawl_all` 為 `main_crawl_all` 的同步包裝，方便在 Notebook 中不寫 `await` 時使用。
+
+**常見錯誤**
+
+- 對 `main()` 傳入 `https://udn.com` 等**首頁** → 多半略過或失敗；批次請用 `main_crawl_all()`。
+- 在 Jupyter 使用 `asyncio.run(main_crawl_all())` → 請改 `await main_crawl_all()` 或 `run_main_crawl_all()`。
 
 ---
 
 ## 注意事項
 
+- **Jupyter 事件迴圈**：批次爬取用 `await main_crawl_all(...)` 或 `run_main_crawl_all(...)`，勿用 `asyncio.run()`。範例見 `utilities.ipynb`。
 - **付費牆**：偵測到訂閱限定、正文過短或「請繼續閱讀」等特徵時會略過該則，不寫入 CSV。
 - **執行時間**：完整批次可能需數十分鐘至數小時（篇數 × 延遲 × 網路狀況）。`test_scraper` 會依類別印出擷取耗時（`x小時 y分鐘 z秒`）。
-- **聯合報娛樂**：列表頁可探索的 `/news/story/` 連結較少，該類實際篇數可能低於 `ARTICLES_PER_CATEGORY`。
+- **聯合報娛樂**：列表頁可探索的 `/news/story/` 連結較少，該類實際篇數可能低於設定的每類上限。
 - **合法與禮貌**：請遵守各站服務條款與 robots 規範；本專案已內建延遲，請勿再大幅縮短以免對目標站造成壓力。
 
 ---

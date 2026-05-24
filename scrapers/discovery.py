@@ -145,11 +145,17 @@ def extract_article_urls(
 
 async def collect_article_urls_by_category(
     newspaper: str,
+    *,
+    articles_per_category: int | None = None,
+    article_scan_limit: int | None = None,
 ) -> list[tuple[str, list[str]]]:
     """
-    依報社設定取得 7 類 × 每類最多 ARTICLES_PER_CATEGORY 則文章 URL。
+    依報社設定取得 7 類 × 每類最多 articles_per_category 則文章 URL。
     回傳 [(新聞種類名稱, [url, ...]), ...]。
     """
+    per_category = articles_per_category or ARTICLES_PER_CATEGORY
+    scan_limit = article_scan_limit or max(ARTICLE_SCAN_LIMIT, per_category + 10)
+
     newspaper = newspaper.lower().strip()
     categories = NEWSPAPER_CATEGORIES.get(newspaper)
     if not categories:
@@ -166,33 +172,50 @@ async def collect_article_urls_by_category(
             newspaper,
             soup,
             category_url,
-            ARTICLE_SCAN_LIMIT,
+            scan_limit,
             exclude=global_seen,
         )
-        picked = batch[:ARTICLES_PER_CATEGORY]
+        picked = batch[:per_category]
         global_seen.update(picked)
         by_category.append((category_name, picked))
 
     return by_category
 
 
-async def collect_article_urls(newspaper: str) -> list[str]:
-    """依報社設定取得 7 類 × 每類最多 ARTICLES_PER_CATEGORY 則文章 URL（扁平列表）。"""
-    by_category = await collect_article_urls_by_category(newspaper)
+async def collect_article_urls(
+    newspaper: str,
+    *,
+    articles_per_category: int | None = None,
+    article_scan_limit: int | None = None,
+) -> list[str]:
+    """依報社設定取得 7 類 × 每類最多 articles_per_category 則文章 URL（扁平列表）。"""
+    by_category = await collect_article_urls_by_category(
+        newspaper,
+        articles_per_category=articles_per_category,
+        article_scan_limit=article_scan_limit,
+    )
     return [url for _, urls in by_category for url in urls]
 
 
 async def collect_all_newspapers_urls(
     newspapers: tuple[str, ...] | None = None,
+    *,
+    articles_per_category: int | None = None,
+    article_scan_limit: int | None = None,
 ) -> list[str]:
     """
     探索四家報社分類列表頁，彙整文章內頁 URL。
-    預設每家 7 類 × 每類最多 ARTICLES_PER_CATEGORY 則（四家合計最多 7×40×4 則）。
+    預設每家 7 類 × 每類最多 ARTICLES_PER_CATEGORY 則。
     """
+    per_category = articles_per_category or ARTICLES_PER_CATEGORY
     papers = newspapers or ALL_NEWSPAPER_KEYS
     all_urls: list[str] = []
     for paper in papers:
         paper = paper.lower().strip()
-        batch = await collect_article_urls(paper)
+        batch = await collect_article_urls(
+            paper,
+            articles_per_category=per_category,
+            article_scan_limit=article_scan_limit,
+        )
         all_urls.extend(batch)
     return all_urls
