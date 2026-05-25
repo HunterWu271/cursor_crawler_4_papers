@@ -3,4 +3,5 @@ data/
 __pycache__/
 workspace.code-workspace 
 utilities.ipynb
+utilities.py 
 *.pyc
